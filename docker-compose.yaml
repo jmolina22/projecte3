@@ -1,0 +1,85 @@
+version: '3'
+networks:
+  my_network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.22.0.0/24
+
+
+
+services:
+
+  apache:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "443:443"
+    volumes:
+      - ./streaming-ssl.conf:/etc/apache2/sites-available/streaming-ssl.conf
+      - ./ssl:/etc/ssl
+      - ./streaming:/var/www/html/streaming
+      - ./streaming-ssl.conf:/etc/apache2/sites-enabled/streaming-ssl.conf
+      - ./php.ini:/usr/local/etc/php/php.ini-production
+    command:  ["/bin/bash", "-c", "apache2ctl -D FOREGROUND & /usr/sbin/sshd -D"]
+    networks:
+      my_network:
+        ipv4_address: 172.22.0.2
+
+
+  db:
+    image: mysql:latest
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: streaming_db  # Nombre de la base de datos para usuarios
+      MYSQL_USER: streaming_user    # Usuario de la base de datos
+      MYSQL_PASSWORD: streaming_password  # Contraseña del usuario
+    volumes:
+      - ./tabla_usuarios.sql:/docker-entrypoint-initdb.d/tabla_usuarios.sql  # Esto es lo que estás buscando
+    networks:
+     my_network:
+       ipv4_address: 172.22.0.3
+
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    ports:
+      - "8080:80"
+    environment:
+      PMA_HOST: db
+      MYSQL_ROOT_PASSWORD: password
+    networks:
+     my_network:
+       ipv4_address: 172.22.0.7
+
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor
+    container_name: cadvisor
+    ports:
+      - "8200:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    restart: unless-stopped
+    networks:
+     my_network:
+       ipv4_address: 172.22.0.5
+  php_ssh:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "2222:22"
+    volumes:
+      - ./id_rsa.pub:/home/remote_user/.ssh/authorized_keys
+    environment:
+      - SSH_PASSWORD=password1234
+
+
